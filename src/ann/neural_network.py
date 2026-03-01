@@ -1,57 +1,85 @@
-"""
-Main Neural Network Model class
-Handles forward and backward propagation loops
-"""
 import numpy as np
+from .neural_layer import NeuralLayer
+from .activations import get_activation_derivative
+from .objective_functions import get_loss, get_loss_derivative
+from .optimizers import get_optimizer
 
 class NeuralNetwork:
-    """
-    Main model class that orchestrates the neural network training and inference.
-    """
-
-    def __init__(self, cli_args):
-        pass
+    def __init__(self, input_size=784, output_size=10, num_layers=3, hidden_size=128,
+                 activation="relu", weight_init="xavier", loss="cross_entropy",
+                 optimizer="adam", lr=0.001, weight_decay=0.0):
+        self.loss_name = loss
+        self.loss_fn = get_loss(loss)
+        self.loss_deriv = get_loss_derivative(loss)
+        self.activation = activation
+        self.optimizer = get_optimizer(optimizer, lr=lr, weight_decay=weight_decay)
+        sizes = [input_size] + [hidden_size] * num_layers + [output_size]
+        self.layers = []
+        for i in range(len(sizes) - 1):
+            is_output = (i == len(sizes) - 2)
+            act = activation if not is_output else "softmax"
+            self.layers.append(NeuralLayer(sizes[i], sizes[i+1], act, weight_init, is_output))
 
     def forward(self, X):
-        """
-        Forward propagation through all layers.
-        Returns logits (no softmax applied)
-        X is shape (b, D_in) and output is shape (b, D_out).
-        b is batch size, D_in is input dimension, D_out is output dimension.
-        """
-        pass
+        out = X
+        for layer in self.layers:
+            out = layer.forward(out)
+        return out
 
     def backward(self, y_true, y_pred):
-        """
-        Backward propagation to compute gradients.
-        Returns two numpy arrays: grad_Ws, grad_bs.
-        - `grad_Ws[0]` is gradient for the last (output) layer weights,
-          `grad_bs[0]` is gradient for the last layer biases, and so on.
-        """
-        grad_W_list = []
-        grad_b_list = []
-
-        # Backprop through layers in reverse; collect grads so that index 0 = last layer
-
-        # create explicit object arrays to avoid numpy trying to broadcast shapes
+        n = len(self.layers)
+        if self.loss_name == "cross_entropy":
+            delta = (y_pred - y_true) / y_true.shape[0]
+        else:
+            d_loss = self.loss_deriv(y_true, y_pred)
+            s = y_pred
+            diag_s = s * (1 - s)
+            delta = d_loss * diag_s
+        grad_W_list, grad_b_list = [], []
+        for i in reversed(range(n)):
+            delta = self.layers[i].backward(delta)
+            grad_W_list.insert(0, self.layers[i].grad_W)
+            grad_b_list.insert(0, self.layers[i].grad_b)
+            if i > 0:
+                act_deriv = get_activation_derivative(self.layers[i-1].activation_name)
+                delta = delta * act_deriv(self.layers[i-1].pre_activation)
         self.grad_W = np.empty(len(grad_W_list), dtype=object)
         self.grad_b = np.empty(len(grad_b_list), dtype=object)
         for i, (gw, gb) in enumerate(zip(grad_W_list, grad_b_list)):
             self.grad_W[i] = gw
             self.grad_b[i] = gb
-
-        print("Shape of grad_Ws:", self.grad_W.shape, self.grad_W[1].shape)
-        print("Shape of grad_bs:", self.grad_b.shape, self.grad_b[1].shape)
         return self.grad_W, self.grad_b
 
     def update_weights(self):
-        pass
+        self.optimizer.step(self.layers)
 
-    def train(self, X_train, y_train, epochs=1, batch_size=32):
-        pass
+    def train_epoch(self, X, y, batch_size=32):
+        indices = np.random.permutation(X.shape[0])
+        total_loss, correct = 0.0, 0
+        for start in range(0, X.shape[0], batch_size):
+            idx = indices[start:start+batch_size]
+            xb, yb = X[idx], y[idx]
+            y_pred = self.forward(xb)
+            total_loss += self.loss_fn(yb, y_pred) * xb.shape[0]
+            correct += np.sum(np.argmax(y_pred, axis=1) == np.argmax(yb, axis=1))
+            self.backward(yb, y_pred)
+            self.update_weights()
+        return total_loss / X.shape[0], correct / X.shape[0]
 
-    def evaluate(self, X, y):
-        pass
+    def evaluate(self, X, y, batch_size=256):
+        total_loss, correct = 0.0, 0
+        for start in range(0, X.shape[0], batch_size):
+            xb, yb = X[start:start+batch_size], y[start:start+batch_size]
+            y_pred = self.forward(xb)
+            total_loss += self.loss_fn(yb, y_pred) * xb.shape[0]
+            correct += np.sum(np.argmax(y_pred, axis=1) == np.argmax(yb, axis=1))
+        return total_loss / X.shape[0], correct / X.shape[0]
+
+    def predict(self, X, batch_size=256):
+        preds = []
+        for start in range(0, X.shape[0], batch_size):
+            preds.append(self.forward(X[start:start+batch_size]))
+        return np.vstack(preds)
 
     def get_weights(self):
         d = {}
@@ -62,10 +90,21 @@ class NeuralNetwork:
 
     def set_weights(self, weight_dict):
         for i, layer in enumerate(self.layers):
-            w_key = f"W{i}"
-            b_key = f"b{i}"
+            w_key, b_key = f"W{i}", f"b{i}"
             if w_key in weight_dict:
                 layer.W = weight_dict[w_key].copy()
             if b_key in weight_dict:
                 layer.b = weight_dict[b_key].copy()
+
+    def get_gradient_norms(self):
+        return [np.linalg.norm(l.grad_W) for l in self.layers]
+
+    def get_activation_stats(self):
+        stats = []
+        for l in self.layers:
+            if hasattr(l, 'output'):
+                zero_frac = np.mean(l.output == 0)
+                stats.append({"mean": np.mean(l.output), "std": np.std(l.output),
+                              "zero_fraction": zero_frac, "values": l.output.flatten()})
+        return stats
 
