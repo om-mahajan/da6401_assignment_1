@@ -1,3 +1,4 @@
+import argparse
 import numpy as np
 from .neural_layer import NeuralLayer
 from .activations import get_activation_derivative
@@ -8,6 +9,20 @@ class NeuralNetwork:
     def __init__(self, input_size=784, output_size=10, num_layers=3, hidden_size=128,
                  activation="relu", weight_init="xavier", loss="cross_entropy",
                  optimizer="adam", lr=0.001, weight_decay=0.0):
+        # Handle argparse Namespace as first argument (autograder compatibility)
+        if isinstance(input_size, argparse.Namespace):
+            args = input_size
+            input_size = getattr(args, 'input_size', 784)
+            output_size = getattr(args, 'output_size', output_size)
+            num_layers = getattr(args, 'num_layers', getattr(args, 'num_hidden_layers', num_layers))
+            hidden_size = getattr(args, 'hidden_size', getattr(args, 'hidden_layer_size', hidden_size))
+            activation = getattr(args, 'activation', activation)
+            weight_init = getattr(args, 'weight_init', getattr(args, 'weight_initialisation', weight_init))
+            loss = getattr(args, 'loss', loss)
+            optimizer = getattr(args, 'optimizer', optimizer)
+            lr = getattr(args, 'learning_rate', getattr(args, 'lr', lr))
+            weight_decay = getattr(args, 'weight_decay', weight_decay)
+
         self.loss_name = loss
         self.loss_fn = get_loss(loss)
         self.loss_deriv = get_loss_derivative(loss)

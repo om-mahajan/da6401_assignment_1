@@ -22,7 +22,8 @@ def parse_arguments():
     p.add_argument('-wn', '--wandb_name', type=str, default=None)
     p.add_argument('--save_path', type=str, default='models/')
     p.add_argument('--sweep', action='store_true')
-    return p.parse_args()
+    args, _ = p.parse_known_args()
+    return args
 
 def build_run_name(cfg):
     return f"{cfg['optimizer']}_{cfg['activation']}_hl{cfg['num_layers']}_hs{cfg['hidden_size']}_lr{cfg['learning_rate']}"
