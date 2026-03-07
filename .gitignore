@@ -1,3 +1,7 @@
 wandb/
 src/utils/__pycache__/
 src/ann/__pycache__/
+run_all.py
+run_all_log.txt
+src/generate_report.py
+src/experiments.py

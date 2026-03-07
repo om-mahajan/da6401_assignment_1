@@ -6,8 +6,8 @@ class NeuralLayer:
         self.is_output = is_output
         self.activation_name = activation
         if weight_init == "xavier":
-            std = np.sqrt(2.0 / (input_size + output_size))
-            self.W = np.random.randn(input_size, output_size) * std
+            limit = np.sqrt(6.0 / (input_size + output_size))
+            self.W = np.random.uniform(-limit, limit, (input_size, output_size))
         elif weight_init == "zeros":
             self.W = np.zeros((input_size, output_size))
         else:

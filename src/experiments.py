@@ -3,12 +3,12 @@ matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 import wandb
-from sklearn.metrics import confusion_matrix, ConfusionMatrixDisplay, f1_score
+from sklearn.metrics import confusion_matrix, ConfusionMatrixDisplay, f1_score, accuracy_score
 from src.ann.neural_network import NeuralNetwork
 from src.utils.data_loader import load_data, load_raw_images, get_class_names
 
-PROJECT = 'da6401_assignment_1'
-ENTITY = None
+PROJECT = 'da6401_assignment1_mnist'
+ENTITY = 'IITmRL'
 
 def wb_init(**kwargs):
     if ENTITY:
@@ -22,7 +22,7 @@ def get_project():
 # ============================================================
 # Q2.1 - Data Exploration: log 5 samples per class
 # ============================================================
-def data_exploration(dataset='fashion_mnist'):
+def data_exploration(dataset='mnist'):
     run = wb_init(name=f'data_exploration_{dataset}', job_type='exploration')
     X, y = load_raw_images(dataset)
     class_names = get_class_names(dataset)
@@ -41,23 +41,30 @@ def data_exploration(dataset='fashion_mnist'):
 def sweep_train():
     run = wb_init()
     cfg = dict(wandb.config)
-    X_train, y_train, X_val, y_val, X_test, y_test = load_data(cfg.get('dataset', 'fashion_mnist'))
+    X_train, y_train, X_val, y_val, X_test, y_test = load_data(cfg.get('dataset', 'mnist'))
     model = NeuralNetwork(
         input_size=784, output_size=10, num_layers=cfg['num_layers'],
         hidden_size=cfg['hidden_size'], activation=cfg['activation'],
         weight_init=cfg.get('weight_init', 'xavier'), loss=cfg['loss'],
         optimizer=cfg['optimizer'], lr=cfg['learning_rate'],
         weight_decay=cfg.get('weight_decay', 0.0))
+    best_val_acc = 0.0
+    best_weights = None
     for epoch in range(cfg.get('epochs', 10)):
-        train_loss, train_acc = model.train_epoch(X_train, y_train, cfg.get('batch_size', 64))
+        train_loss, train_acc = model.train_epoch(X_train, y_train, cfg.get('batch_size', 32))
         val_loss, val_acc = model.evaluate(X_val, y_val)
         wandb.log({"epoch": epoch+1, "train_loss": train_loss, "train_accuracy": train_acc,
                     "val_loss": val_loss, "val_accuracy": val_acc})
+        if val_acc > best_val_acc:
+            best_val_acc = val_acc
+            best_weights = model.get_weights()
     test_loss, test_acc = model.evaluate(X_test, y_test)
     y_pred = np.argmax(model.predict(X_test), axis=1)
     y_true = np.argmax(y_test, axis=1)
     test_f1 = f1_score(y_true, y_pred, average='macro')
-    wandb.log({"test_loss": test_loss, "test_accuracy": test_acc, "test_f1": test_f1})
+    wandb.run.summary["best_val_accuracy"] = best_val_acc
+    wandb.log({"test_loss": test_loss, "test_accuracy": test_acc, "test_f1": test_f1,
+               "train_accuracy": train_acc})
     wandb.finish()
 
 def hyperparameter_sweep(count=100):
@@ -65,14 +72,14 @@ def hyperparameter_sweep(count=100):
         'method': 'bayes',
         'metric': {'name': 'val_accuracy', 'goal': 'maximize'},
         'parameters': {
-            'dataset': {'value': 'fashion_mnist'},
-            'epochs': {'values': [5, 10]},
+            'dataset': {'value': 'mnist'},
+            'epochs': {'values': [5, 10, 15]},
             'num_layers': {'values': [2, 3, 4, 5]},
             'hidden_size': {'values': [32, 64, 128]},
             'activation': {'values': ['relu', 'sigmoid', 'tanh']},
             'optimizer': {'values': ['sgd', 'momentum', 'nag', 'rmsprop', 'adam', 'nadam']},
             'learning_rate': {'values': [1e-3, 1e-4]},
-            'batch_size': {'values': [32, 64]},
+            'batch_size': {'values': [16, 32, 64]},
             'weight_init': {'values': ['random', 'xavier']},
             'weight_decay': {'values': [0, 0.0005, 0.005]},
             'loss': {'values': ['cross_entropy', 'mean_squared_error']}
@@ -84,7 +91,7 @@ def hyperparameter_sweep(count=100):
 # ============================================================
 # Q2.3 - Optimizer Comparison
 # ============================================================
-def optimizer_comparison(dataset='fashion_mnist'):
+def optimizer_comparison(dataset='mnist'):
     X_train, y_train, X_val, y_val, X_test, y_test = load_data(dataset)
     for opt in ['sgd', 'momentum', 'nag', 'rmsprop', 'adam', 'nadam']:
         run = wb_init(name=f'optim_{opt}', group='optimizer_comparison', reinit=True)
@@ -105,7 +112,7 @@ def optimizer_comparison(dataset='fashion_mnist'):
 # ============================================================
 # Q2.4 - Vanishing Gradient Analysis
 # ============================================================
-def vanishing_gradient(dataset='fashion_mnist'):
+def vanishing_gradient(dataset='mnist'):
     X_train, y_train, X_val, y_val, _, _ = load_data(dataset)
     for act in ['sigmoid', 'relu']:
         for nhl in [3, 5]:
@@ -128,7 +135,7 @@ def vanishing_gradient(dataset='fashion_mnist'):
 # ============================================================
 # Q2.5 - Dead Neuron Investigation
 # ============================================================
-def dead_neuron(dataset='fashion_mnist'):
+def dead_neuron(dataset='mnist'):
     X_train, y_train, X_val, y_val, _, _ = load_data(dataset)
     configs = [('relu', 0.1), ('tanh', 0.1), ('relu', 0.001)]
     for act, lr_val in configs:
@@ -154,7 +161,7 @@ def dead_neuron(dataset='fashion_mnist'):
 # ============================================================
 # Q2.6 - Loss Function Comparison
 # ============================================================
-def loss_comparison(dataset='fashion_mnist'):
+def loss_comparison(dataset='mnist'):
     X_train, y_train, X_val, y_val, X_test, y_test = load_data(dataset)
     for loss_fn in ['cross_entropy', 'mean_squared_error']:
         run = wb_init(name=f'loss_{loss_fn}',
@@ -209,7 +216,7 @@ def global_analysis():
 # ============================================================
 # Q2.8 - Confusion Matrix for Best Model
 # ============================================================
-def confusion_matrix_best(dataset='fashion_mnist', model_path='models/best_model.npy', config_path='models/best_config.json'):
+def confusion_matrix_best(dataset='mnist', model_path='models/best_model.npy', config_path='models/best_config.json'):
     with open(config_path) as f:
         cfg = json.load(f)
     model = NeuralNetwork(input_size=784, output_size=10, num_layers=cfg['num_layers'],
@@ -223,26 +230,62 @@ def confusion_matrix_best(dataset='fashion_mnist', model_path='models/best_model
     y_true = np.argmax(y_test, axis=1)
     class_names = get_class_names(dataset)
     cm = confusion_matrix(y_true, y_pred)
+
+    # --- Confusion Matrix Plot ---
     fig, ax = plt.subplots(figsize=(10, 8))
     disp = ConfusionMatrixDisplay(cm, display_labels=class_names)
     disp.plot(ax=ax, cmap='Blues', xticks_rotation=45)
     plt.title('Confusion Matrix - Best Model')
     plt.tight_layout()
     plt.savefig('confusion_matrix.png', dpi=150)
+    plt.close()
+
     run = wb_init(name='confusion_matrix', job_type='analysis')
     wandb.log({"confusion_matrix": wandb.Image('confusion_matrix.png')})
+
+    # --- Per-class accuracy table ---
+    per_class_table = wandb.Table(columns=["Class", "Accuracy", "Total", "Correct"])
+    for i, cn in enumerate(class_names):
+        mask = y_true == i
+        total = mask.sum()
+        correct = (y_pred[mask] == i).sum()
+        per_class_table.add_data(cn, correct / total if total > 0 else 0, int(total), int(correct))
+    wandb.log({"per_class_accuracy": per_class_table})
+
+    # --- Misclassified samples table ---
     misclassified = np.where(y_pred != y_true)[0]
     table = wandb.Table(columns=["Image", "True Label", "Predicted Label"])
     for idx in misclassified[:50]:
         img = (X_test[idx].reshape(28, 28) * 255).astype(np.uint8)
         table.add_data(wandb.Image(img), class_names[y_true[idx]], class_names[y_pred[idx]])
     wandb.log({"misclassified_samples": table})
+
+    # --- Creative failure visualization: grid of top misclassified images ---
+    n_show = min(25, len(misclassified))
+    fig2, axes = plt.subplots(5, 5, figsize=(12, 12))
+    fig2.suptitle('Model Failures: True vs Predicted', fontsize=16)
+    for i in range(25):
+        ax = axes[i // 5][i % 5]
+        if i < n_show:
+            idx = misclassified[i]
+            img = (X_test[idx].reshape(28, 28) * 255).astype(np.uint8)
+            ax.imshow(img, cmap='gray')
+            ax.set_title(f'T:{class_names[y_true[idx]]}\nP:{class_names[y_pred[idx]]}', fontsize=8)
+        ax.axis('off')
+    plt.tight_layout()
+    plt.savefig('misclassified_grid.png', dpi=150)
+    plt.close()
+    wandb.log({"misclassified_grid": wandb.Image('misclassified_grid.png')})
+
+    overall_acc = accuracy_score(y_true, y_pred)
+    overall_f1 = f1_score(y_true, y_pred, average='macro')
+    wandb.log({"test_accuracy": overall_acc, "test_f1": overall_f1})
     wandb.finish()
 
 # ============================================================
 # Q2.9 - Weight Initialization & Symmetry
 # ============================================================
-def weight_init_symmetry(dataset='fashion_mnist'):
+def weight_init_symmetry(dataset='mnist'):
     X_train, y_train, X_val, y_val, _, _ = load_data(dataset)
     for init_method in ['zeros', 'xavier']:
         run = wb_init(name=f'init_{init_method}',
@@ -312,6 +355,60 @@ def fashion_transfer():
         wandb.finish()
 
 # ============================================================
+# Save Best Model from Sweep
+# ============================================================
+def save_best_from_sweep(dataset='mnist'):
+    """Find best run from sweep via W&B API, retrain with that config, save model."""
+    api = wandb.Api()
+    path = f"{ENTITY}/{get_project()}" if ENTITY else get_project()
+    runs = api.runs(path, filters={"config.dataset": dataset})
+    best_run, best_acc = None, 0.0
+    for r in runs:
+        va = r.summary.get('best_val_accuracy', r.summary.get('val_accuracy', 0))
+        if va is not None and va > best_acc:
+            best_acc = va
+            best_run = r
+    if best_run is None:
+        print("No sweep runs found. Run the sweep first.")
+        return
+    cfg = {k: v for k, v in best_run.config.items() if not k.startswith('_')}
+    print(f"Best run: {best_run.name} with val_accuracy={best_acc:.4f}")
+    print(f"Config: {json.dumps(cfg, indent=2)}")
+
+    X_train, y_train, X_val, y_val, X_test, y_test = load_data(dataset)
+    model = NeuralNetwork(
+        input_size=784, output_size=10, num_layers=cfg['num_layers'],
+        hidden_size=cfg['hidden_size'], activation=cfg['activation'],
+        weight_init=cfg.get('weight_init', 'xavier'), loss=cfg['loss'],
+        optimizer=cfg['optimizer'], lr=cfg['learning_rate'],
+        weight_decay=cfg.get('weight_decay', 0.0))
+
+    run = wb_init(name='best_model_retrain', job_type='retrain')
+    wandb.config.update(cfg)
+    best_val_acc = 0.0
+    best_weights = None
+    for epoch in range(cfg.get('epochs', 10)):
+        train_loss, train_acc = model.train_epoch(X_train, y_train, cfg.get('batch_size', 32))
+        val_loss, val_acc = model.evaluate(X_val, y_val)
+        wandb.log({"epoch": epoch+1, "train_loss": train_loss, "train_accuracy": train_acc,
+                    "val_loss": val_loss, "val_accuracy": val_acc})
+        if val_acc > best_val_acc:
+            best_val_acc = val_acc
+            best_weights = model.get_weights()
+
+    if best_weights is not None:
+        model.set_weights(best_weights)
+    test_loss, test_acc = model.evaluate(X_test, y_test)
+    wandb.log({"test_loss": test_loss, "test_accuracy": test_acc, "best_val_accuracy": best_val_acc})
+    print(f"Retrained model: test_acc={test_acc:.4f}, best_val_acc={best_val_acc:.4f}")
+
+    os.makedirs('models', exist_ok=True)
+    np.save('models/best_model.npy', model.get_weights())
+    with open('models/best_config.json', 'w') as f:
+        json.dump({**cfg, 'dataset': dataset, 'learning_rate': cfg.get('learning_rate', cfg.get('lr', 0.001))}, f, indent=2)
+    wandb.finish()
+
+# ============================================================
 # Main CLI dispatcher
 # ============================================================
 if __name__ == '__main__':
@@ -320,11 +417,11 @@ if __name__ == '__main__':
                    choices=['data_exploration', 'sweep', 'optimizer_comparison',
                             'vanishing_gradient', 'dead_neuron', 'loss_comparison',
                             'global_analysis', 'confusion_matrix', 'weight_init_symmetry',
-                            'fashion_transfer'])
-    p.add_argument('-wp', '--wandb_project', type=str, default='da6401_assignment_1')
+                            'fashion_transfer', 'save_best'])
+    p.add_argument('-wp', '--wandb_project', type=str, default='da6401_assignment1_mnist')
     p.add_argument('--sweep_count', type=int, default=100)
-    p.add_argument('--dataset', type=str, default='fashion_mnist')
-    p.add_argument('-we', '--wandb_entity', type=str, default=None)
+    p.add_argument('--dataset', type=str, default='mnist')
+    p.add_argument('-we', '--wandb_entity', type=str, default='IITmRL')
     args = p.parse_args()
     PROJECT = args.wandb_project
     ENTITY = args.wandb_entity
@@ -340,5 +437,6 @@ if __name__ == '__main__':
         'confusion_matrix': lambda: confusion_matrix_best(args.dataset),
         'weight_init_symmetry': lambda: weight_init_symmetry(args.dataset),
         'fashion_transfer': fashion_transfer,
+        'save_best': lambda: save_best_from_sweep(args.dataset),
     }
     experiments[args.experiment]()

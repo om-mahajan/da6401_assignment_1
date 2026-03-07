@@ -6,7 +6,7 @@ from src.utils.data_loader import load_data
 
 def parse_arguments():
     p = argparse.ArgumentParser(description='Train a neural network')
-    p.add_argument('-d', '--dataset', type=str, default='fashion_mnist', choices=['mnist', 'fashion_mnist'])
+    p.add_argument('-d', '--dataset', type=str, default='mnist', choices=['mnist', 'fashion_mnist'])
     p.add_argument('-e', '--epochs', type=int, default=10)
     p.add_argument('-b', '--batch_size', type=int, default=64)
     p.add_argument('-l', '--loss', type=str, default='cross_entropy', choices=['mean_squared_error', 'cross_entropy'])
