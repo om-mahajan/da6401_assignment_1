@@ -40,9 +40,9 @@ class NeuralNetwork:
         self.activation = activation
         self.weight_decay = weight_decay 
         self.optimizer = get_optimizer(optimizer, lr=lr, weight_decay=weight_decay)
-        self.output_size = output_size 
+        self.output_size = int(output_size) # Ensure integer for array allocation
         
-        sizes = [input_size] + hidden_sizes + [output_size]
+        sizes = [input_size] + hidden_sizes + [self.output_size]
         self.layers = []
         for i in range(len(sizes) - 1):
             is_output = (i == len(sizes) - 2)
@@ -50,17 +50,12 @@ class NeuralNetwork:
             self.layers.append(NeuralLayer(sizes[i], sizes[i+1], act, weight_init, is_output))
 
     def _ensure_one_hot(self, y):
+        """Bulletproof dynamic one-hot encoding wrapper."""
         if y.ndim == 1 or (y.ndim == 2 and y.shape[1] == 1):
             y_oh = np.zeros((y.shape[0], self.output_size))
             y_oh[np.arange(y.shape[0]), y.flatten().astype(int)] = 1
             return y_oh
         return y
-
-    def _safe_normalize(self, X):
-        # Bulletproof check: If pixel values > 10 are detected, scale to 0-1
-        if np.max(X) > 10.0:
-            return X.astype(np.float32) / 255.0
-        return X
 
     def forward(self, X):
         out = X
@@ -76,6 +71,7 @@ class NeuralNetwork:
         if self.loss_name == "cross_entropy":
             delta = (y_pred - y_true) / y_true.shape[0]
         else:
+            # Exact Softmax + MSE mathematical derivative
             d_loss = self.loss_deriv(y_true, y_pred)
             sum_dp = np.sum(d_loss * y_pred, axis=1, keepdims=True)
             delta = y_pred * (d_loss - sum_dp)
@@ -108,8 +104,6 @@ class NeuralNetwork:
             idx = indices[start:start+batch_size]
             xb, yb = X[idx], y[idx]
             
-            # Normalize and format safeguards
-            xb = self._safe_normalize(xb)
             yb = self._ensure_one_hot(yb)
             
             logits = self.forward(xb)
@@ -128,7 +122,6 @@ class NeuralNetwork:
         for start in range(0, X.shape[0], batch_size):
             xb, yb = X[start:start+batch_size], y[start:start+batch_size]
             
-            xb = self._safe_normalize(xb)
             yb = self._ensure_one_hot(yb)
             
             logits = self.forward(xb)
@@ -142,8 +135,7 @@ class NeuralNetwork:
     def predict(self, X, batch_size=256):
         preds = []
         for start in range(0, X.shape[0], batch_size):
-            xb = self._safe_normalize(X[start:start+batch_size])
-            preds.append(self.forward(xb))
+            preds.append(self.forward(X[start:start+batch_size]))
         return np.vstack(preds)
 
     def get_weights(self):
