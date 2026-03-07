@@ -28,6 +28,7 @@ class NeuralNetwork:
             hidden_sizes = list(hidden_size)
         else:
             hidden_sizes = [int(hidden_size)] * num_layers
+        
         # If list length doesn't match num_layers, adjust
         if len(hidden_sizes) != num_layers:
             if len(hidden_sizes) == 1:
@@ -39,8 +40,9 @@ class NeuralNetwork:
         self.loss_fn = get_loss(loss)
         self.loss_deriv = get_loss_derivative(loss)
         self.activation = activation
-        self.weight_decay = weight_decay # Explicitly store weight decay
+        self.weight_decay = weight_decay 
         self.optimizer = get_optimizer(optimizer, lr=lr, weight_decay=weight_decay)
+        self.output_size = output_size # Store output size for one-hot encoding
         
         sizes = [input_size] + hidden_sizes + [output_size]
         self.layers = []
@@ -49,6 +51,14 @@ class NeuralNetwork:
             act = activation if not is_output else "identity"
             self.layers.append(NeuralLayer(sizes[i], sizes[i+1], act, weight_init, is_output))
 
+    def _ensure_one_hot(self, y):
+        # Dynamically one-hot encode if labels are passed as 1D integers or a single column
+        if y.ndim == 1 or (y.ndim == 2 and y.shape[1] == 1):
+            y_oh = np.zeros((y.shape[0], self.output_size))
+            y_oh[np.arange(y.shape[0]), y.flatten().astype(int)] = 1
+            return y_oh
+        return y
+
     def forward(self, X):
         out = X
         for layer in self.layers:
@@ -56,22 +66,23 @@ class NeuralNetwork:
         return out  # returns logits (pre-softmax)
 
     def backward(self, y_true, logits):
+        # 1. ENFORCE ONE-HOT ENCODING
+        y_true = self._ensure_one_hot(y_true)
+        
         n = len(self.layers)
         y_pred = softmax(logits)
         
         if self.loss_name == "cross_entropy":
             delta = (y_pred - y_true) / y_true.shape[0]
         else:
-            # CORRECTED: Exact mathematical derivative for Mean Squared Error + Softmax
             d_loss = self.loss_deriv(y_true, y_pred)
             sum_dp = np.sum(d_loss * y_pred, axis=1, keepdims=True)
             delta = y_pred * (d_loss - sum_dp)
             
         grad_W_list, grad_b_list = [], []
-        wd = getattr(self, 'weight_decay', 0.0) # Retrieve weight decay
+        wd = getattr(self, 'weight_decay', 0.0) 
         
         for i in reversed(range(n)):
-            # Pass weight decay to the layer's backward method
             delta = self.layers[i].backward(delta, weight_decay=wd)
             grad_W_list.insert(0, self.layers[i].grad_W)
             grad_b_list.insert(0, self.layers[i].grad_b)
@@ -95,22 +106,35 @@ class NeuralNetwork:
         for start in range(0, X.shape[0], batch_size):
             idx = indices[start:start+batch_size]
             xb, yb = X[idx], y[idx]
+            
+            # Enforce one-hot before metrics and loss calculation
+            yb = self._ensure_one_hot(yb)
+            
             logits = self.forward(xb)
             y_pred = softmax(logits)
+            
             total_loss += self.loss_fn(yb, y_pred) * xb.shape[0]
             correct += np.sum(np.argmax(y_pred, axis=1) == np.argmax(yb, axis=1))
+            
             self.backward(yb, logits)
             self.update_weights()
+            
         return total_loss / X.shape[0], correct / X.shape[0]
 
     def evaluate(self, X, y, batch_size=256):
         total_loss, correct = 0.0, 0
         for start in range(0, X.shape[0], batch_size):
             xb, yb = X[start:start+batch_size], y[start:start+batch_size]
+            
+            # Enforce one-hot before evaluation
+            yb = self._ensure_one_hot(yb)
+            
             logits = self.forward(xb)
             y_pred = softmax(logits)
+            
             total_loss += self.loss_fn(yb, y_pred) * xb.shape[0]
             correct += np.sum(np.argmax(y_pred, axis=1) == np.argmax(yb, axis=1))
+            
         return total_loss / X.shape[0], correct / X.shape[0]
 
     def predict(self, X, batch_size=256):
