@@ -8,8 +8,8 @@ from src.utils.data_loader import load_data, get_class_names
 
 def parse_arguments():
     p = argparse.ArgumentParser(description='Run inference on test set')
-    p.add_argument('--model_path', type=str, default='models/best_model.npy')
-    p.add_argument('--config_path', type=str, default='models/best_config.json')
+    p.add_argument('--model_path', type=str, default='src/best_model.npy')
+    p.add_argument('--config_path', type=str, default='src/best_config.json')
     p.add_argument('-d', '--dataset', type=str, default=None)
     p.add_argument('-b', '--batch_size', type=int, default=256)
     p.add_argument('--log_wandb', action='store_true', default=True,

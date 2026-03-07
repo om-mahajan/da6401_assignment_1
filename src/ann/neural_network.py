@@ -1,7 +1,7 @@
 import argparse
 import numpy as np
 from .neural_layer import NeuralLayer
-from .activations import get_activation_derivative
+from .activations import get_activation_derivative, softmax
 from .objective_functions import get_loss, get_loss_derivative
 from .optimizers import get_optimizer
 
@@ -23,32 +23,44 @@ class NeuralNetwork:
             lr = getattr(args, 'learning_rate', getattr(args, 'lr', lr))
             weight_decay = getattr(args, 'weight_decay', weight_decay)
 
+        # hidden_size can be an int or a list of ints
+        if isinstance(hidden_size, (list, tuple)):
+            hidden_sizes = list(hidden_size)
+        else:
+            hidden_sizes = [int(hidden_size)] * num_layers
+        # If list length doesn't match num_layers, adjust
+        if len(hidden_sizes) != num_layers:
+            if len(hidden_sizes) == 1:
+                hidden_sizes = hidden_sizes * num_layers
+            else:
+                num_layers = len(hidden_sizes)
+
         self.loss_name = loss
         self.loss_fn = get_loss(loss)
         self.loss_deriv = get_loss_derivative(loss)
         self.activation = activation
         self.optimizer = get_optimizer(optimizer, lr=lr, weight_decay=weight_decay)
-        sizes = [input_size] + [hidden_size] * num_layers + [output_size]
+        sizes = [input_size] + hidden_sizes + [output_size]
         self.layers = []
         for i in range(len(sizes) - 1):
             is_output = (i == len(sizes) - 2)
-            act = activation if not is_output else "softmax"
+            act = activation if not is_output else "identity"
             self.layers.append(NeuralLayer(sizes[i], sizes[i+1], act, weight_init, is_output))
 
     def forward(self, X):
         out = X
         for layer in self.layers:
             out = layer.forward(out)
-        return out
+        return out  # returns logits (pre-softmax)
 
-    def backward(self, y_true, y_pred):
+    def backward(self, y_true, logits):
         n = len(self.layers)
+        y_pred = softmax(logits)
         if self.loss_name == "cross_entropy":
             delta = (y_pred - y_true) / y_true.shape[0]
         else:
             d_loss = self.loss_deriv(y_true, y_pred)
-            s = y_pred
-            diag_s = s * (1 - s)
+            diag_s = y_pred * (1 - y_pred)
             delta = d_loss * diag_s
         grad_W_list, grad_b_list = [], []
         for i in reversed(range(n)):
@@ -74,10 +86,11 @@ class NeuralNetwork:
         for start in range(0, X.shape[0], batch_size):
             idx = indices[start:start+batch_size]
             xb, yb = X[idx], y[idx]
-            y_pred = self.forward(xb)
+            logits = self.forward(xb)
+            y_pred = softmax(logits)
             total_loss += self.loss_fn(yb, y_pred) * xb.shape[0]
             correct += np.sum(np.argmax(y_pred, axis=1) == np.argmax(yb, axis=1))
-            self.backward(yb, y_pred)
+            self.backward(yb, logits)
             self.update_weights()
         return total_loss / X.shape[0], correct / X.shape[0]
 
@@ -85,7 +98,8 @@ class NeuralNetwork:
         total_loss, correct = 0.0, 0
         for start in range(0, X.shape[0], batch_size):
             xb, yb = X[start:start+batch_size], y[start:start+batch_size]
-            y_pred = self.forward(xb)
+            logits = self.forward(xb)
+            y_pred = softmax(logits)
             total_loss += self.loss_fn(yb, y_pred) * xb.shape[0]
             correct += np.sum(np.argmax(y_pred, axis=1) == np.argmax(yb, axis=1))
         return total_loss / X.shape[0], correct / X.shape[0]
@@ -94,7 +108,7 @@ class NeuralNetwork:
         preds = []
         for start in range(0, X.shape[0], batch_size):
             preds.append(self.forward(X[start:start+batch_size]))
-        return np.vstack(preds)
+        return np.vstack(preds)  # returns logits
 
     def get_weights(self):
         d = {}

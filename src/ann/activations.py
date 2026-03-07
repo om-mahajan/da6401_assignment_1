@@ -24,8 +24,14 @@ def softmax(x):
     e = np.exp(x - np.max(x, axis=1, keepdims=True))
     return e / np.sum(e, axis=1, keepdims=True)
 
-ACTIVATIONS = {"sigmoid": sigmoid, "tanh": tanh, "relu": relu, "softmax": softmax}
-ACTIVATION_DERIVATIVES = {"sigmoid": sigmoid_derivative, "tanh": tanh_derivative, "relu": relu_derivative}
+def identity(x):
+    return x
+
+def identity_derivative(x):
+    return np.ones_like(x)
+
+ACTIVATIONS = {"sigmoid": sigmoid, "tanh": tanh, "relu": relu, "softmax": softmax, "identity": identity}
+ACTIVATION_DERIVATIVES = {"sigmoid": sigmoid_derivative, "tanh": tanh_derivative, "relu": relu_derivative, "identity": identity_derivative}
 
 def get_activation(name):
     return ACTIVATIONS[name]

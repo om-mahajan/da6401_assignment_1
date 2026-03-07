@@ -1,5 +1,5 @@
 import numpy as np
-from .activations import get_activation, get_activation_derivative, softmax
+from .activations import get_activation, get_activation_derivative
 
 class NeuralLayer:
     def __init__(self, input_size, output_size, activation="relu", weight_init="xavier", is_output=False):
@@ -19,10 +19,7 @@ class NeuralLayer:
     def forward(self, X):
         self.input = X
         self.pre_activation = X @ self.W + self.b
-        if self.is_output:
-            self.output = softmax(self.pre_activation)
-        else:
-            self.output = get_activation(self.activation_name)(self.pre_activation)
+        self.output = get_activation(self.activation_name)(self.pre_activation)
         return self.output
 
     def backward(self, delta):

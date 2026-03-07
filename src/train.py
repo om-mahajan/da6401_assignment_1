@@ -14,7 +14,7 @@ def parse_arguments():
     p.add_argument('-lr', '--learning_rate', type=float, default=0.001)
     p.add_argument('-wd', '--weight_decay', type=float, default=0.0)
     p.add_argument('-nhl', '--num_layers', type=int, default=3)
-    p.add_argument('-sz', '--hidden_size', type=int, default=128)
+    p.add_argument('-sz', '--hidden_size', nargs='+', type=int, default=[128])
     p.add_argument('-a', '--activation', type=str, default='relu', choices=['sigmoid', 'tanh', 'relu'])
     p.add_argument('-w_i', '--weight_init', type=str, default='xavier', choices=['random', 'xavier', 'zeros'])
     p.add_argument('-wp', '--wandb_project', type=str, default='da6401_assignment_1')
@@ -77,6 +77,11 @@ def train(config=None, sweep_mode=False):
         os.makedirs(save_dir, exist_ok=True)
         np.save(os.path.join(save_dir, 'best_model.npy'), best_weights)
         with open(os.path.join(save_dir, 'best_config.json'), 'w') as f:
+            json.dump(cfg, f, indent=2)
+        # Also save to src/ directory for autograder
+        src_dir = os.path.join(os.path.dirname(__file__))
+        np.save(os.path.join(src_dir, 'best_model.npy'), best_weights)
+        with open(os.path.join(src_dir, 'best_config.json'), 'w') as f:
             json.dump(cfg, f, indent=2)
 
     wandb.finish()
