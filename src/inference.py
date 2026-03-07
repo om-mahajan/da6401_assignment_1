@@ -35,12 +35,17 @@ def evaluate_model(model, X_test, y_test):
     logits = model.predict(X_test)
     loss, acc = model.evaluate(X_test, y_test)
     y_pred = np.argmax(logits, axis=1)
-    y_true = np.argmax(y_test, axis=1)
+    
+    if y_test.ndim == 2 and y_test.shape[1] > 1:
+        y_true = np.argmax(y_test, axis=1) 
+    else:
+        y_true = y_test.flatten().astype(int) 
+        
     return {
         "logits": logits, "loss": loss, "accuracy": acc,
         "f1": f1_score(y_true, y_pred, average='macro'),
-        "precision": precision_score(y_true, y_pred, average='macro'),
-        "recall": recall_score(y_true, y_pred, average='macro'),
+        "precision": precision_score(y_true, y_pred, average='macro', zero_division=0),
+        "recall": recall_score(y_true, y_pred, average='macro', zero_division=0),
         "confusion_matrix": confusion_matrix(y_true, y_pred)
     }
 

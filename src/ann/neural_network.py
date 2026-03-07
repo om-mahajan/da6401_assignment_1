@@ -23,13 +23,11 @@ class NeuralNetwork:
             lr = getattr(args, 'learning_rate', getattr(args, 'lr', lr))
             weight_decay = getattr(args, 'weight_decay', weight_decay)
 
-        # hidden_size can be an int or a list of ints
         if isinstance(hidden_size, (list, tuple)):
             hidden_sizes = list(hidden_size)
         else:
             hidden_sizes = [int(hidden_size)] * num_layers
         
-        # If list length doesn't match num_layers, adjust
         if len(hidden_sizes) != num_layers:
             if len(hidden_sizes) == 1:
                 hidden_sizes = hidden_sizes * num_layers
@@ -42,7 +40,7 @@ class NeuralNetwork:
         self.activation = activation
         self.weight_decay = weight_decay 
         self.optimizer = get_optimizer(optimizer, lr=lr, weight_decay=weight_decay)
-        self.output_size = output_size # Store output size for one-hot encoding
+        self.output_size = output_size 
         
         sizes = [input_size] + hidden_sizes + [output_size]
         self.layers = []
@@ -52,23 +50,26 @@ class NeuralNetwork:
             self.layers.append(NeuralLayer(sizes[i], sizes[i+1], act, weight_init, is_output))
 
     def _ensure_one_hot(self, y):
-        # Dynamically one-hot encode if labels are passed as 1D integers or a single column
         if y.ndim == 1 or (y.ndim == 2 and y.shape[1] == 1):
             y_oh = np.zeros((y.shape[0], self.output_size))
             y_oh[np.arange(y.shape[0]), y.flatten().astype(int)] = 1
             return y_oh
         return y
 
+    def _safe_normalize(self, X):
+        # Bulletproof check: If pixel values > 10 are detected, scale to 0-1
+        if np.max(X) > 10.0:
+            return X.astype(np.float32) / 255.0
+        return X
+
     def forward(self, X):
         out = X
         for layer in self.layers:
             out = layer.forward(out)
-        return out  # returns logits (pre-softmax)
+        return out
 
     def backward(self, y_true, logits):
-        # 1. ENFORCE ONE-HOT ENCODING
         y_true = self._ensure_one_hot(y_true)
-        
         n = len(self.layers)
         y_pred = softmax(logits)
         
@@ -107,7 +108,8 @@ class NeuralNetwork:
             idx = indices[start:start+batch_size]
             xb, yb = X[idx], y[idx]
             
-            # Enforce one-hot before metrics and loss calculation
+            # Normalize and format safeguards
+            xb = self._safe_normalize(xb)
             yb = self._ensure_one_hot(yb)
             
             logits = self.forward(xb)
@@ -126,7 +128,7 @@ class NeuralNetwork:
         for start in range(0, X.shape[0], batch_size):
             xb, yb = X[start:start+batch_size], y[start:start+batch_size]
             
-            # Enforce one-hot before evaluation
+            xb = self._safe_normalize(xb)
             yb = self._ensure_one_hot(yb)
             
             logits = self.forward(xb)
@@ -140,8 +142,9 @@ class NeuralNetwork:
     def predict(self, X, batch_size=256):
         preds = []
         for start in range(0, X.shape[0], batch_size):
-            preds.append(self.forward(X[start:start+batch_size]))
-        return np.vstack(preds)  # returns logits
+            xb = self._safe_normalize(X[start:start+batch_size])
+            preds.append(self.forward(xb))
+        return np.vstack(preds)
 
     def get_weights(self):
         d = {}
