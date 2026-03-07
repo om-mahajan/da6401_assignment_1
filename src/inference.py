@@ -35,20 +35,15 @@ def evaluate_model(model, X_test, y_test):
     logits = model.predict(X_test)
     loss, acc = model.evaluate(X_test, y_test)
     y_pred = np.argmax(logits, axis=1)
-    
-    # Robust true label parsing for Scikit-Learn metrics
-    if y_test.ndim == 2 and y_test.shape[1] > 1:
-        y_true = np.argmax(y_test, axis=1) # It's one-hot encoded
-    else:
-        y_true = y_test.flatten().astype(int) # It's a 1D array of integers
-        
+    y_true = np.argmax(y_test, axis=1)
     return {
         "logits": logits, "loss": loss, "accuracy": acc,
         "f1": f1_score(y_true, y_pred, average='macro'),
-        "precision": precision_score(y_true, y_pred, average='macro', zero_division=0),
-        "recall": recall_score(y_true, y_pred, average='macro', zero_division=0),
+        "precision": precision_score(y_true, y_pred, average='macro'),
+        "recall": recall_score(y_true, y_pred, average='macro'),
         "confusion_matrix": confusion_matrix(y_true, y_pred)
     }
+
 def main():
     args = parse_arguments()
     model, cfg = load_model(args.model_path, args.config_path)

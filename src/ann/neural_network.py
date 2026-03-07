@@ -23,11 +23,13 @@ class NeuralNetwork:
             lr = getattr(args, 'learning_rate', getattr(args, 'lr', lr))
             weight_decay = getattr(args, 'weight_decay', weight_decay)
 
+        # hidden_size can be an int or a list of ints
         if isinstance(hidden_size, (list, tuple)):
             hidden_sizes = list(hidden_size)
         else:
             hidden_sizes = [int(hidden_size)] * num_layers
         
+        # If list length doesn't match num_layers, adjust
         if len(hidden_sizes) != num_layers:
             if len(hidden_sizes) == 1:
                 hidden_sizes = hidden_sizes * num_layers
@@ -40,9 +42,9 @@ class NeuralNetwork:
         self.activation = activation
         self.weight_decay = weight_decay 
         self.optimizer = get_optimizer(optimizer, lr=lr, weight_decay=weight_decay)
-        self.output_size = int(output_size) # Ensure integer for array allocation
+        self.output_size = output_size # Store output size for one-hot encoding
         
-        sizes = [input_size] + hidden_sizes + [self.output_size]
+        sizes = [input_size] + hidden_sizes + [output_size]
         self.layers = []
         for i in range(len(sizes) - 1):
             is_output = (i == len(sizes) - 2)
@@ -50,7 +52,7 @@ class NeuralNetwork:
             self.layers.append(NeuralLayer(sizes[i], sizes[i+1], act, weight_init, is_output))
 
     def _ensure_one_hot(self, y):
-        """Bulletproof dynamic one-hot encoding wrapper."""
+        # Dynamically one-hot encode if labels are passed as 1D integers or a single column
         if y.ndim == 1 or (y.ndim == 2 and y.shape[1] == 1):
             y_oh = np.zeros((y.shape[0], self.output_size))
             y_oh[np.arange(y.shape[0]), y.flatten().astype(int)] = 1
@@ -61,17 +63,18 @@ class NeuralNetwork:
         out = X
         for layer in self.layers:
             out = layer.forward(out)
-        return out
+        return out  # returns logits (pre-softmax)
 
     def backward(self, y_true, logits):
+        # 1. ENFORCE ONE-HOT ENCODING
         y_true = self._ensure_one_hot(y_true)
+        
         n = len(self.layers)
         y_pred = softmax(logits)
         
         if self.loss_name == "cross_entropy":
             delta = (y_pred - y_true) / y_true.shape[0]
         else:
-            # Exact Softmax + MSE mathematical derivative
             d_loss = self.loss_deriv(y_true, y_pred)
             sum_dp = np.sum(d_loss * y_pred, axis=1, keepdims=True)
             delta = y_pred * (d_loss - sum_dp)
@@ -104,6 +107,7 @@ class NeuralNetwork:
             idx = indices[start:start+batch_size]
             xb, yb = X[idx], y[idx]
             
+            # Enforce one-hot before metrics and loss calculation
             yb = self._ensure_one_hot(yb)
             
             logits = self.forward(xb)
@@ -122,6 +126,7 @@ class NeuralNetwork:
         for start in range(0, X.shape[0], batch_size):
             xb, yb = X[start:start+batch_size], y[start:start+batch_size]
             
+            # Enforce one-hot before evaluation
             yb = self._ensure_one_hot(yb)
             
             logits = self.forward(xb)
@@ -136,7 +141,7 @@ class NeuralNetwork:
         preds = []
         for start in range(0, X.shape[0], batch_size):
             preds.append(self.forward(X[start:start+batch_size]))
-        return np.vstack(preds)
+        return np.vstack(preds)  # returns logits
 
     def get_weights(self):
         d = {}
