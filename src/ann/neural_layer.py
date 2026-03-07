@@ -22,7 +22,8 @@ class NeuralLayer:
         self.output = get_activation(self.activation_name)(self.pre_activation)
         return self.output
 
-    def backward(self, delta):
-        self.grad_W = self.input.T @ delta
+    def backward(self, delta, weight_decay=0.0):
+        # Added weight decay (L2 penalty) directly to the weight gradients
+        self.grad_W = self.input.T @ delta + (weight_decay * self.W)
         self.grad_b = np.sum(delta, axis=0, keepdims=True)
         return delta @ self.W.T

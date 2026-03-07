@@ -9,3 +9,7 @@ src/__pycache__/generate_report.cpython-311.pyc
 src/__pycache__/inference.cpython-311.pyc
 test_filter.py
 src\experiments.py
+confusion_matrix.png
+global_analysis.png
+inference_cm.png
+misclassified_grid.png

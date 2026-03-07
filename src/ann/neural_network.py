@@ -39,7 +39,9 @@ class NeuralNetwork:
         self.loss_fn = get_loss(loss)
         self.loss_deriv = get_loss_derivative(loss)
         self.activation = activation
+        self.weight_decay = weight_decay # Explicitly store weight decay
         self.optimizer = get_optimizer(optimizer, lr=lr, weight_decay=weight_decay)
+        
         sizes = [input_size] + hidden_sizes + [output_size]
         self.layers = []
         for i in range(len(sizes) - 1):
@@ -56,20 +58,27 @@ class NeuralNetwork:
     def backward(self, y_true, logits):
         n = len(self.layers)
         y_pred = softmax(logits)
+        
         if self.loss_name == "cross_entropy":
             delta = (y_pred - y_true) / y_true.shape[0]
         else:
+            # CORRECTED: Exact mathematical derivative for Mean Squared Error + Softmax
             d_loss = self.loss_deriv(y_true, y_pred)
-            diag_s = y_pred * (1 - y_pred)
-            delta = d_loss * diag_s
+            sum_dp = np.sum(d_loss * y_pred, axis=1, keepdims=True)
+            delta = y_pred * (d_loss - sum_dp)
+            
         grad_W_list, grad_b_list = [], []
+        wd = getattr(self, 'weight_decay', 0.0) # Retrieve weight decay
+        
         for i in reversed(range(n)):
-            delta = self.layers[i].backward(delta)
+            # Pass weight decay to the layer's backward method
+            delta = self.layers[i].backward(delta, weight_decay=wd)
             grad_W_list.insert(0, self.layers[i].grad_W)
             grad_b_list.insert(0, self.layers[i].grad_b)
             if i > 0:
                 act_deriv = get_activation_derivative(self.layers[i-1].activation_name)
                 delta = delta * act_deriv(self.layers[i-1].pre_activation)
+                
         self.grad_W = np.empty(len(grad_W_list), dtype=object)
         self.grad_b = np.empty(len(grad_b_list), dtype=object)
         for i, (gw, gb) in enumerate(zip(grad_W_list, grad_b_list)):
@@ -136,4 +145,3 @@ class NeuralNetwork:
                 stats.append({"mean": np.mean(l.output), "std": np.std(l.output),
                               "zero_fraction": zero_frac, "values": l.output.flatten()})
         return stats
-
