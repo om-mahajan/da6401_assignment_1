@@ -13,3 +13,9 @@ confusion_matrix.png
 global_analysis.png
 inference_cm.png
 misclassified_grid.png
+src\run_experiments.py
+src/test.py
+experiments_log.txt
+src/run_experiments.py
+src/test.py
+src/__pycache__/experiments.cpython-311.pyc
